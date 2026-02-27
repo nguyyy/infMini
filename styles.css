@@ -1,0 +1,127 @@
+:root {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --ink: #1b1b1b;
+  --muted: #666;
+  --line: #d0d0cf;
+  --accent: #2677ff;
+  --good: #daf4df;
+  --bad: #ffd8d8;
+  --block: #111;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+.toggle { font-size: 0.95rem; color: var(--muted); display: flex; gap: 0.35rem; align-items: center; }
+
+.board-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(250px, 1fr);
+  gap: 1rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, 62px);
+  grid-template-rows: repeat(5, 62px);
+  border: 2px solid #000;
+  width: max-content;
+  background: #000;
+}
+
+.cell {
+  position: relative;
+  background: #fff;
+  border: 1px solid #000;
+}
+
+.cell.block {
+  background: var(--block);
+}
+
+.cell input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: none;
+  text-align: center;
+  font-size: 2rem;
+  text-transform: uppercase;
+}
+
+.cell.active input { box-shadow: inset 0 0 0 3px var(--accent); }
+.cell.wrong input { background: var(--bad); }
+.cell.correct input { background: var(--good); }
+
+.num {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 0.7rem;
+  color: #111;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.sidebar {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 280px;
+}
+
+.status {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.5rem;
+}
+
+.clues { max-height: 70vh; overflow: auto; }
+.clues h2 { margin: 0.4rem 0; font-size: 1rem; }
+.clues ol { margin: 0; padding-left: 1.4rem; }
+.clues li { margin-bottom: 0.35rem; line-height: 1.2; }
+.clues li.active { color: var(--accent); font-weight: 700; }
+
+@media (max-width: 900px) {
+  .board-wrap { grid-template-columns: 1fr; }
+}
