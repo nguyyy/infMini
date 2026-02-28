@@ -1,35 +1,7 @@
 const SIZE = 5;
-
-const PATTERNS = [
-  [
-    '.....',
-    '.....',
-    '.....',
-    '.....',
-    '.....',
-  ],
-  [
-    '.....',
-    '.#.#.',
-    '.....',
-    '.#.#.',
-    '.....',
-  ],
-  [
-    '..#..',
-    '.....',
-    '#...#',
-    '.....',
-    '..#..',
-  ],
-  [
-    '.....',
-    '..#..',
-    '#...#',
-    '..#..',
-    '.....',
-  ],
-];
+const CACHE_KEY = 'infmini.cachedPuzzles.v1';
+const CACHE_TARGET = 50;
+const MAX_CACHE_ATTEMPTS = 200;
 
 const ENTRIES = [
   ['SATOR', 'Ancient Latin square word'],
@@ -117,8 +89,11 @@ const state = {
   puzzle: null,
   direction: 'across',
   active: null,
+  activeSlotId: null,
   timerStart: Date.now(),
   timerId: null,
+  cachedPuzzles: [],
+  nextSeed: Date.now(),
 };
 
 function rng(seed) {
@@ -168,17 +143,41 @@ function intersects(a, b) {
   return null;
 }
 
+function hasMinWordLength(pattern, min = 3) {
+  const { slots } = getSlots(pattern);
+  return slots.length > 0 && slots.every(slot => slot.len >= min);
+}
+
+function buildPattern(seed) {
+  const rand = rng(seed);
+  const grid = Array.from({ length: SIZE }, () => Array(SIZE).fill('.'));
+  const targetBlocks = 2 + Math.floor(rand() * 5);
+
+  for (let i = 0; i < targetBlocks * 3; i++) {
+    const r = Math.floor(rand() * SIZE);
+    const c = Math.floor(rand() * SIZE);
+    const rr = SIZE - 1 - r;
+    const cc = SIZE - 1 - c;
+    if ((r === 2 && c === 2) || (rr === 2 && cc === 2)) continue;
+    grid[r][c] = '#';
+    grid[rr][cc] = '#';
+  }
+
+  if (!hasMinWordLength(grid.map(row => row.join('')))) {
+    return ['.....', '.....', '.....', '.....', '.....'];
+  }
+  return grid.map(row => row.join(''));
+}
+
 function buildPuzzle(seed) {
   const rand = rng(seed);
-  const viablePatterns = PATTERNS.filter(pattern => {
-    const { slots } = getSlots(pattern);
-    return slots.every(slot => (BY_LENGTH.get(slot.len) || []).length > 0);
-  });
-
-  if (!viablePatterns.length) return null;
-
-  const pattern = viablePatterns[Math.floor(rand() * viablePatterns.length)];
+  const pattern = buildPattern(seed);
   const { slots, numberMap } = getSlots(pattern);
+
+  if (!slots.length) return null;
+
+  const isViable = slots.every(slot => (BY_LENGTH.get(slot.len) || []).length > 0);
+  if (!isViable) return null;
 
   const slotOrder = [...slots].sort((a, b) => b.len - a.len);
   const assignment = new Map();
@@ -247,15 +246,46 @@ function buildPuzzle(seed) {
   return { pattern, solution, clues, numberMap };
 }
 
-function generatePuzzle() {
-  let attempts = 0;
-  while (attempts < 80) {
-    const candidate = buildPuzzle(state.seed + attempts);
-    if (candidate) {
-      state.seed += attempts;
-      return candidate;
+function savePuzzleCache() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(state.cachedPuzzles));
+  } catch {
+    // Ignore storage limits/privacy mode issues.
+  }
+}
+
+function loadPuzzleCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      state.cachedPuzzles = parsed.filter(p => p && p.pattern && p.solution && p.clues && p.numberMap);
     }
+  } catch {
+    state.cachedPuzzles = [];
+  }
+}
+
+function warmPuzzleCache() {
+  let attempts = 0;
+  while (state.cachedPuzzles.length < CACHE_TARGET && attempts < MAX_CACHE_ATTEMPTS) {
+    const puzzle = buildPuzzle(state.nextSeed++);
+    if (puzzle) state.cachedPuzzles.push(puzzle);
     attempts++;
+  }
+  savePuzzleCache();
+}
+
+function generatePuzzle() {
+  if (!state.cachedPuzzles.length) warmPuzzleCache();
+  const puzzle = state.cachedPuzzles.shift();
+  savePuzzleCache();
+  warmPuzzleCache();
+
+  if (puzzle) {
+    state.seed = state.nextSeed;
+    return puzzle;
   }
   throw new Error('Unable to generate puzzle.');
 }
@@ -288,6 +318,7 @@ function render() {
         input.dataset.col = c;
         input.addEventListener('input', onInput);
         input.addEventListener('keydown', onKeyDown);
+        input.addEventListener('pointerdown', () => onPointerDownCell(r, c));
         input.addEventListener('focus', () => setActiveCell(r, c));
         cell.append(input);
       }
@@ -328,6 +359,13 @@ function findSlotAt(row, col, dir = state.direction) {
   }) || null;
 }
 
+
+function onPointerDownCell(row, col) {
+  if (state.active && state.active.row === row && state.active.col === col) {
+    state.direction = state.direction === 'across' ? 'down' : 'across';
+  }
+}
+
 function setActiveCell(row, col) {
   state.active = { row, col };
   document.querySelectorAll('.cell.active').forEach(el => el.classList.remove('active'));
@@ -336,10 +374,27 @@ function setActiveCell(row, col) {
 
   const current = findSlotAt(row, col);
   if (!current) return;
+  state.activeSlotId = current.id;
 
   document.querySelectorAll('.clues li.active').forEach(el => el.classList.remove('active'));
   const clueEl = document.querySelector(`.clues li[data-id="${current.id}"]`);
   if (clueEl) clueEl.classList.add('active');
+}
+
+function focusSlotStart(slot) {
+  if (!slot) return;
+  const input = document.querySelector(`input[data-row="${slot.row}"][data-col="${slot.col}"]`);
+  if (input) input.focus();
+}
+
+function moveToNextClue() {
+  if (!state.active) return;
+  const clues = state.puzzle.clues[state.direction];
+  if (!clues.length) return;
+
+  const current = clues.findIndex(slot => slot.id === state.activeSlotId);
+  const nextIndex = current >= 0 ? (current + 1) % clues.length : 0;
+  focusSlotStart(clues[nextIndex]);
 }
 
 function moveWithinSlot(slot, indexOffset = 1) {
@@ -415,6 +470,9 @@ function onKeyDown(event) {
     event.preventDefault();
     state.direction = 'down';
     moveByVector(-1, 0);
+  } else if (event.key === 'Tab' || event.key === 'Enter') {
+    event.preventDefault();
+    moveToNextClue();
   }
 }
 
@@ -486,9 +544,9 @@ function resetTimer() {
 }
 
 function newPuzzle() {
-  state.seed = Date.now();
   state.puzzle = generatePuzzle();
   state.direction = 'across';
+  state.activeSlotId = null;
   render();
   resetTimer();
 }
@@ -510,4 +568,6 @@ function bindButtons() {
 }
 
 bindButtons();
+loadPuzzleCache();
+warmPuzzleCache();
 newPuzzle();
