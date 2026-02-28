@@ -5,6 +5,8 @@
   --muted: #666;
   --line: #d0d0cf;
   --accent: #2677ff;
+  --slot-highlight: color-mix(in srgb, var(--accent) 18%, transparent);
+  --slot-highlight-focus: color-mix(in srgb, var(--accent) 35%, transparent);
   --good: #daf4df;
   --bad: #ffd8d8;
   --block: #111;
@@ -89,9 +91,10 @@ button:hover { border-color: var(--accent); }
 }
 
 .cell.active input {
-  background: rgba(255, 245, 166, 0.55);
-  box-shadow: inset 0 0 0 3px rgba(255, 213, 77, 0.85);
+  background: var(--slot-highlight-focus);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 70%, white 30%);
 }
+.cell.active-slot input { background: var(--slot-highlight); }
 .cell.wrong input { background: var(--bad); }
 .cell.correct input { background: var(--good); }
 
@@ -119,6 +122,29 @@ button:hover { border-color: var(--accent); }
   font-size: 0.95rem;
   border-bottom: 1px solid var(--line);
   margin-bottom: 0.5rem;
+}
+
+.ai-controls {
+  display: grid;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.ai-controls input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+#aiStatus {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
 }
 
 .clues { max-height: 70vh; overflow: auto; }

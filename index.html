@@ -12,6 +12,7 @@
         <h1>Infinite Mini</h1>
         <div class="controls">
           <button id="newPuzzleBtn">New Puzzle</button>
+          <button id="generateAiBtn">Generate AI Batch</button>
           <button id="checkWordBtn">Check Word</button>
           <button id="checkPuzzleBtn">Check Puzzle</button>
           <button id="revealWordBtn">Reveal Word</button>
@@ -29,6 +30,11 @@
           <div class="status">
             <p><strong>Timer:</strong> <span id="timer">00:00</span></p>
             <p><strong>Puzzle #</strong><span id="seed"></span></p>
+          </div>
+          <div class="ai-controls">
+            <label for="openAiKey"><strong>OpenAI API key</strong></label>
+            <input id="openAiKey" type="password" autocomplete="off" placeholder="sk-..." />
+            <p id="aiStatus" aria-live="polite">AI cache not loaded.</p>
           </div>
           <div class="clues">
             <section>
