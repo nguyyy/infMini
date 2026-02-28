@@ -3,6 +3,13 @@ const SIZE = 5;
 const PATTERNS = [
   [
     '.....',
+    '.....',
+    '.....',
+    '.....',
+    '.....',
+  ],
+  [
+    '.....',
     '.#.#.',
     '.....',
     '.#.#.',
@@ -25,6 +32,11 @@ const PATTERNS = [
 ];
 
 const ENTRIES = [
+  ['SATOR', 'Ancient Latin square word'],
+  ['AREPO', 'Second word in the Sator square'],
+  ['TENET', 'Principle or guiding belief'],
+  ['OPERA', 'Plural of opus; staged musical dramas'],
+  ['ROTAS', 'Latin for wheels, from the Sator square'],
   ['APPLE', 'Common fruit with a crisp bite'],
   ['BRAIN', 'Your thinking organ'],
   ['CLOUD', 'Where rain can form'],
@@ -158,7 +170,14 @@ function intersects(a, b) {
 
 function buildPuzzle(seed) {
   const rand = rng(seed);
-  const pattern = PATTERNS[Math.floor(rand() * PATTERNS.length)];
+  const viablePatterns = PATTERNS.filter(pattern => {
+    const { slots } = getSlots(pattern);
+    return slots.every(slot => (BY_LENGTH.get(slot.len) || []).length > 0);
+  });
+
+  if (!viablePatterns.length) return null;
+
+  const pattern = viablePatterns[Math.floor(rand() * viablePatterns.length)];
   const { slots, numberMap } = getSlots(pattern);
 
   const slotOrder = [...slots].sort((a, b) => b.len - a.len);
@@ -168,7 +187,6 @@ function buildPuzzle(seed) {
     const words = BY_LENGTH.get(slot.len) || [];
     const pool = words.filter(entry => {
       for (const [other, value] of assignment) {
-        if (value.word === entry.word) return false;
         const hit = intersects(slot, other);
         if (!hit) continue;
         if (entry.word[hit.i] !== value.word[hit.j]) return false;

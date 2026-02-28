@@ -11,10 +11,12 @@ A browser-based, endlessly replayable mini crossword inspired by NYT Mini intera
 - Puzzle timer and instant generation of a new puzzle.
 
 ## Run
-Because this is a static web app, you can open `index.html` directly, or run a tiny static server:
+Run with a tiny static server (recommended so script loading is consistent across browsers):
 
 ```bash
 python -m http.server 4173
 ```
 
 Then open http://localhost:4173.
+
+> Note: Some browsers restrict JavaScript module loading from `file://` URLs. This app now uses a classic script for wider compatibility, but serving over HTTP is still the most reliable way to run it.
