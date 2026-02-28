@@ -1,7 +1,9 @@
 const SIZE = 5;
 const CACHE_KEY = 'infmini.cachedPuzzles.v1';
+const AI_CACHE_KEY = 'infmini.cachedAiPuzzles.v1';
 const CACHE_TARGET = 50;
 const MAX_CACHE_ATTEMPTS = 200;
+const AI_BATCH_SIZE = 6;
 
 const ENTRIES = [
   ['SATOR', 'Ancient Latin square word'],
@@ -83,6 +85,9 @@ const downCluesEl = document.getElementById('downClues');
 const seedEl = document.getElementById('seed');
 const timerEl = document.getElementById('timer');
 const autoCheckToggle = document.getElementById('autoCheckToggle');
+const openAiKeyEl = document.getElementById('openAiKey');
+const generateAiBtn = document.getElementById('generateAiBtn');
+const aiStatusEl = document.getElementById('aiStatus');
 
 const state = {
   seed: Date.now(),
@@ -93,7 +98,9 @@ const state = {
   timerStart: Date.now(),
   timerId: null,
   cachedPuzzles: [],
+  cachedAiPuzzles: [],
   nextSeed: Date.now(),
+  aiGenerating: false,
 };
 
 function rng(seed) {
@@ -254,6 +261,14 @@ function savePuzzleCache() {
   }
 }
 
+function saveAiCache() {
+  try {
+    localStorage.setItem(AI_CACHE_KEY, JSON.stringify(state.cachedAiPuzzles));
+  } catch {
+    // Ignore storage limits/privacy mode issues.
+  }
+}
+
 function loadPuzzleCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -267,6 +282,24 @@ function loadPuzzleCache() {
   }
 }
 
+function loadAiCache() {
+  try {
+    const raw = localStorage.getItem(AI_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      state.cachedAiPuzzles = parsed.filter(isValidPuzzleLike);
+    }
+  } catch {
+    state.cachedAiPuzzles = [];
+  }
+}
+
+function isValidPuzzleLike(p) {
+  return p && Array.isArray(p.pattern) && Array.isArray(p.solution)
+    && p.clues && p.numberMap;
+}
+
 function warmPuzzleCache() {
   let attempts = 0;
   while (state.cachedPuzzles.length < CACHE_TARGET && attempts < MAX_CACHE_ATTEMPTS) {
@@ -278,6 +311,14 @@ function warmPuzzleCache() {
 }
 
 function generatePuzzle() {
+  const aiPuzzle = state.cachedAiPuzzles.shift();
+  if (aiPuzzle) {
+    saveAiCache();
+    updateAiStatus();
+    state.seed = `AI-${Date.now().toString().slice(-6)}`;
+    return aiPuzzle;
+  }
+
   if (!state.cachedPuzzles.length) warmPuzzleCache();
   const puzzle = state.cachedPuzzles.shift();
   savePuzzleCache();
@@ -369,12 +410,17 @@ function onPointerDownCell(row, col) {
 function setActiveCell(row, col) {
   state.active = { row, col };
   document.querySelectorAll('.cell.active').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cell.active-slot').forEach(el => el.classList.remove('active-slot'));
   const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
   if (cell) cell.classList.add('active');
 
   const current = findSlotAt(row, col);
   if (!current) return;
   state.activeSlotId = current.id;
+  for (const { row: slotRow, col: slotCol } of cellsForSlot(current)) {
+    const slotCell = document.querySelector(`.cell[data-row="${slotRow}"][data-col="${slotCol}"]`);
+    if (slotCell) slotCell.classList.add('active-slot');
+  }
 
   document.querySelectorAll('.clues li.active').forEach(el => el.classList.remove('active'));
   const clueEl = document.querySelector(`.clues li[data-id="${current.id}"]`);
@@ -551,8 +597,137 @@ function newPuzzle() {
   resetTimer();
 }
 
+function updateAiStatus(message) {
+  if (message) {
+    aiStatusEl.textContent = message;
+    return;
+  }
+  aiStatusEl.textContent = state.cachedAiPuzzles.length
+    ? `${state.cachedAiPuzzles.length} AI puzzle(s) cached.`
+    : 'AI cache empty.';
+}
+
+function parseGridBlocks(text) {
+  const lines = text
+    .split('\n')
+    .map(line => line.trim().toUpperCase())
+    .filter(Boolean);
+
+  const grids = [];
+  for (let i = 0; i <= lines.length - SIZE; i++) {
+    const chunk = lines.slice(i, i + SIZE);
+    if (chunk.every(line => /^[A-Z#.]{5}$/.test(line))) {
+      const normalized = chunk.map(line => line.replace(/\./g, '#'));
+      grids.push(normalized);
+      i += SIZE - 1;
+    }
+  }
+  return grids;
+}
+
+function puzzleFromGrid(grid) {
+  if (!Array.isArray(grid) || grid.length !== SIZE) return null;
+  const upper = grid.map(row => row.toUpperCase());
+  if (!upper.every(row => /^[A-Z#]{5}$/.test(row))) return null;
+
+  const pattern = upper.map(row => row.replace(/[A-Z]/g, '.'));
+  const { slots, numberMap } = getSlots(pattern);
+  if (!slots.length) return null;
+
+  const solution = upper.map(row => row.split(''));
+  const clues = { across: [], down: [] };
+  for (const slot of slots) {
+    let answer = '';
+    for (let i = 0; i < slot.len; i++) {
+      const r = slot.row + (slot.dir === 'down' ? i : 0);
+      const c = slot.col + (slot.dir === 'across' ? i : 0);
+      const letter = solution[r][c];
+      if (!/[A-Z]/.test(letter)) return null;
+      answer += letter;
+    }
+    clues[slot.dir].push({
+      id: slot.id,
+      number: slot.number,
+      clue: `AI generated ${slot.dir} answer`,
+      answer,
+      row: slot.row,
+      col: slot.col,
+      len: slot.len,
+      dir: slot.dir,
+    });
+  }
+  clues.across.sort((a, b) => a.number - b.number);
+  clues.down.sort((a, b) => a.number - b.number);
+  return { pattern, solution, clues, numberMap };
+}
+
+function extractResponseText(data) {
+  if (typeof data.output_text === 'string' && data.output_text) return data.output_text;
+  if (!Array.isArray(data.output)) return '';
+  return data.output
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(item => item.type === 'output_text' && typeof item.text === 'string')
+    .map(item => item.text)
+    .join('\n');
+}
+
+async function generateAiPuzzlesBatch() {
+  const apiKey = openAiKeyEl.value.trim();
+  if (!apiKey) {
+    updateAiStatus('Add an OpenAI key first to generate AI grids.');
+    return;
+  }
+  if (state.aiGenerating) return;
+
+  state.aiGenerating = true;
+  generateAiBtn.disabled = true;
+  updateAiStatus('Generating AI 5x5 grids...');
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-mini',
+        input: `Generate ${AI_BATCH_SIZE} valid 5x5 crossword solution grids.\nOutput only the grids.\nEach grid must be exactly 5 lines of 5 chars using A-Z and #.\nSeparate grids with a blank line.`,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`API error ${response.status}: ${err.slice(0, 200)}`);
+    }
+
+    const data = await response.json();
+    const outputText = extractResponseText(data);
+    const rawGrids = parseGridBlocks(outputText);
+    const puzzles = rawGrids
+      .map(puzzleFromGrid)
+      .filter(Boolean);
+
+    if (!puzzles.length) throw new Error('No parseable 5x5 grids were returned.');
+
+    const [first, ...rest] = puzzles;
+    state.puzzle = first;
+    state.cachedAiPuzzles.push(...rest);
+    saveAiCache();
+    render();
+    resetTimer();
+    updateAiStatus(`Loaded 1 puzzle + cached ${rest.length} more AI puzzle(s).`);
+  } catch (error) {
+    updateAiStatus(`AI generation failed: ${error.message}`);
+  } finally {
+    state.aiGenerating = false;
+    generateAiBtn.disabled = false;
+  }
+}
+
 function bindButtons() {
   document.getElementById('newPuzzleBtn').addEventListener('click', newPuzzle);
+  generateAiBtn.addEventListener('click', generateAiPuzzlesBatch);
   document.getElementById('checkWordBtn').addEventListener('click', () => {
     if (!state.active) return;
     const slot = findSlotAt(state.active.row, state.active.col);
@@ -569,5 +744,7 @@ function bindButtons() {
 
 bindButtons();
 loadPuzzleCache();
+loadAiCache();
+updateAiStatus();
 warmPuzzleCache();
 newPuzzle();
