@@ -7,6 +7,7 @@
   --accent: #2677ff;
   --slot-highlight: color-mix(in srgb, var(--accent) 18%, transparent);
   --slot-highlight-focus: color-mix(in srgb, var(--accent) 35%, transparent);
+  --focus-yellow: #ffe168;
   --good: #daf4df;
   --bad: #ffd8d8;
   --block: #111;
@@ -91,10 +92,11 @@ button:hover { border-color: var(--accent); }
 }
 
 .cell.active input {
-  background: var(--slot-highlight-focus);
-  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 70%, white 30%);
+  background: var(--focus-yellow);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, #d2ab00 75%, white 25%);
 }
 .cell.active-slot input { background: var(--slot-highlight); }
+.cell.active.active-slot input { background: var(--focus-yellow); }
 .cell.wrong input { background: var(--bad); }
 .cell.correct input { background: var(--good); }
 

@@ -13,6 +13,7 @@
         <div class="controls">
           <button id="newPuzzleBtn">New Puzzle</button>
           <button id="generateAiBtn">Generate AI Batch</button>
+          <button id="importMiniBtn">Import Mini from URL</button>
           <button id="checkWordBtn">Check Word</button>
           <button id="checkPuzzleBtn">Check Puzzle</button>
           <button id="revealWordBtn">Reveal Word</button>
@@ -35,6 +36,11 @@
             <label for="openAiKey"><strong>OpenAI API key</strong></label>
             <input id="openAiKey" type="password" autocomplete="off" placeholder="sk-..." />
             <p id="aiStatus" aria-live="polite">AI cache not loaded.</p>
+          </div>
+          <div class="ai-controls">
+            <label for="miniUrl"><strong>Mini source URL (NYT / LA Times)</strong></label>
+            <input id="miniUrl" type="url" autocomplete="off" placeholder="https://..." />
+            <p id="miniStatus" aria-live="polite">Import idle.</p>
           </div>
           <div class="clues">
             <section>
