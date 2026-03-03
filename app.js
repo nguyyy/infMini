@@ -88,6 +88,9 @@ const autoCheckToggle = document.getElementById('autoCheckToggle');
 const openAiKeyEl = document.getElementById('openAiKey');
 const generateAiBtn = document.getElementById('generateAiBtn');
 const aiStatusEl = document.getElementById('aiStatus');
+const miniUrlEl = document.getElementById('miniUrl');
+const miniStatusEl = document.getElementById('miniStatus');
+const importMiniBtn = document.getElementById('importMiniBtn');
 
 const state = {
   seed: Date.now(),
@@ -101,6 +104,7 @@ const state = {
   cachedAiPuzzles: [],
   nextSeed: Date.now(),
   aiGenerating: false,
+  miniImporting: false,
 };
 
 function rng(seed) {
@@ -625,6 +629,129 @@ function parseGridBlocks(text) {
   return grids;
 }
 
+function updateMiniStatus(message) {
+  miniStatusEl.textContent = message;
+}
+
+function parseMiniFromNyt(payload) {
+  const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+  const body = data?.results?.[0] || data;
+  const size = body?.body?.dimension;
+  const cells = body?.body?.cells;
+  if (!size || !Array.isArray(cells) || size.cols !== SIZE || size.rows !== SIZE) return null;
+
+  const rows = Array.from({ length: SIZE }, (_, row) =>
+    cells
+      .slice(row * SIZE, row * SIZE + SIZE)
+      .map(cell => {
+        if (!cell || cell.type === 0) return '#';
+        const answer = String(cell.answer || '').toUpperCase();
+        return /^[A-Z]$/.test(answer) ? answer : '#';
+      })
+      .join('')
+  );
+
+  return puzzleFromGrid(rows);
+}
+
+function parseMiniFromLaTimes(text) {
+  const c1 = text.match(/window\.rawc\s*=\s*"([^"]+)"/);
+  if (!c1) return null;
+  const decoded = decodeURIComponent(c1[1].replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => `%${hex}`));
+  const board = decoded.match(/"box":\[(.*?)\],"placedWords"/);
+  if (!board) return null;
+  const values = board[1]
+    .split(',')
+    .map(value => Number(value.trim()))
+    .filter(value => Number.isFinite(value));
+  if (values.length !== SIZE * SIZE) return null;
+
+  const rows = [];
+  for (let r = 0; r < SIZE; r++) {
+    let row = '';
+    for (let c = 0; c < SIZE; c++) {
+      const value = values[r * SIZE + c];
+      if (value === 0) row += '#';
+      else row += String.fromCharCode(value).toUpperCase();
+    }
+    rows.push(row);
+  }
+  return puzzleFromGrid(rows);
+}
+
+async function fetchMiniSource(url) {
+  const variants = [
+    url,
+    `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  ];
+
+  let lastError = null;
+  for (const candidate of variants) {
+    try {
+      const response = await fetch(candidate);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.text();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Unable to fetch source URL.');
+}
+
+async function importMiniFromUrl() {
+  const url = miniUrlEl.value.trim();
+  if (!url) {
+    updateMiniStatus('Paste a NYT or LA Times Mini URL first.');
+    return;
+  }
+  if (state.miniImporting) return;
+
+  state.miniImporting = true;
+  importMiniBtn.disabled = true;
+  updateMiniStatus('Importing mini...');
+
+  try {
+    const source = await fetchMiniSource(url);
+    let puzzle = null;
+
+    if (url.includes('nytimes.com')) {
+      try {
+        puzzle = parseMiniFromNyt(source);
+      } catch {
+        // Fall through to generic parse.
+      }
+    }
+
+    if (!puzzle && (url.includes('latimes.com') || source.includes('window.rawc'))) {
+      puzzle = parseMiniFromLaTimes(source);
+    }
+
+    if (!puzzle) {
+      const candidateGrids = parseGridBlocks(source)
+        .map(grid => grid.map(row => row.replace(/\./g, '#')))
+        .map(puzzleFromGrid)
+        .filter(Boolean);
+      puzzle = candidateGrids[0] || null;
+    }
+
+    if (!puzzle) {
+      throw new Error('Could not parse a valid 5x5 mini from that source.');
+    }
+
+    state.puzzle = puzzle;
+    state.seed = `IMP-${Date.now().toString().slice(-6)}`;
+    render();
+    resetTimer();
+    updateMiniStatus('Imported mini puzzle successfully.');
+  } catch (error) {
+    updateMiniStatus(`Mini import failed: ${error.message}`);
+  } finally {
+    state.miniImporting = false;
+    importMiniBtn.disabled = false;
+  }
+}
+
 function puzzleFromGrid(grid) {
   if (!Array.isArray(grid) || grid.length !== SIZE) return null;
   const upper = grid.map(row => row.toUpperCase());
@@ -728,6 +855,7 @@ async function generateAiPuzzlesBatch() {
 function bindButtons() {
   document.getElementById('newPuzzleBtn').addEventListener('click', newPuzzle);
   generateAiBtn.addEventListener('click', generateAiPuzzlesBatch);
+  importMiniBtn.addEventListener('click', importMiniFromUrl);
   document.getElementById('checkWordBtn').addEventListener('click', () => {
     if (!state.active) return;
     const slot = findSlotAt(state.active.row, state.active.col);

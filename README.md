@@ -9,6 +9,7 @@ A browser-based, endlessly replayable mini crossword inspired by NYT Mini intera
 - Auto-check toggle for immediate correctness feedback.
 - Check/reveal current word or whole puzzle.
 - Puzzle timer and instant generation of a new puzzle.
+- Import NYT/LA Times mini puzzle pages and recreate a playable 5x5 grid in this app.
 
 ## Run
 Run with a tiny static server (recommended so script loading is consistent across browsers):
